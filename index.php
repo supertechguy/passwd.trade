@@ -33,6 +33,10 @@ function validate_input($input) {
 // Function to clear sensitive data from memory
 function clear_memory(...$vars) {
     foreach ($vars as $var) {
+        // Overwrite the input variable with nulls
+        for ($i = 0; $i < strlen($var); $i++) {
+          $input[$i] = "\0";
+        }
         unset($var);
     }
 }
