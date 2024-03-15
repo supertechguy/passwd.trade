@@ -21,7 +21,7 @@ function log_error($message) {
 // Function to validate user input
 function validate_input($input) {
   // Allow only normal keyboard characters (letters, numbers, spaces, and common symbols)
-  if (preg_match('/^[a-zA-Z0-9\s!"#$%&\'()*+,-.\/:;<=>?@\[\\\]^_`{|}~]*$/', $input)) {
+  if (preg_match('#^[ -~£±§]*$#', $input)) {
       return $input;
   } else {
       // Invalid input, handle accordingly (e.g., log error, display error message)
@@ -328,7 +328,7 @@ if (bot_detected()) {
             $stmt->close();
 
             $id = $mysqli->insert_id;
-            $link = "$project_url/index.php?action=decrypt&id=$id&code=$code";
+            $link = "$project_url/index.php?action=decrypt&id=$id&code=$code&key1=$key1&key2=$key2";
             display_link($link);
 
             clear_memory($passwd, $key1, $key2, $code, $encrypted_passwd);
