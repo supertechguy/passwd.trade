@@ -22,8 +22,8 @@ function log_error($message) {
 
 // Function to validate user input
 function validate_input($input) {
-  // Allow only normal keyboard characters (letters, numbers, spaces, and common symbols)
-  if (preg_match('#^[ -~£±§]*$#', $input)) {
+  // Allow only normal keyboard characters (letters, numbers, spaces, common symbols, line breaks, and carriage returns)
+  if (preg_match('#^[ -~\r\n£±§]*$#', $input)) {
       return $input;
   } else {
       // Invalid input, handle accordingly (e.g., log error, display error message)
