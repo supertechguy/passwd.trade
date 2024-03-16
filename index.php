@@ -205,7 +205,7 @@ border-radius: 8px;
 <body>
 <center>
 <br>
-<img src='supertechguy-avatar-redeagle.svg' width='100px'>
+<img src='$project_url/supertechguy-avatar-redeagle.svg' width='100px'>
 <br>
 ";
 }
@@ -268,7 +268,7 @@ function display_link($link) {
   Copy Link
   </button>
 </div>
-<input class='button' type='button' onclick=\"location.href='index.php';\" value='Reset' />
+<input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
 
 ";
 }
@@ -285,7 +285,7 @@ function display_passwd($passwd) {
   Copy Password
   </button>
 </div>
-  <input class='button' type='button' onclick=\"location.href='index.php';\" value='Reset' />
+  <input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
 
 ";
 }
@@ -293,7 +293,7 @@ function display_passwd($passwd) {
 function display_error() {
     echo "<br>
   <p style='color:red'>[ERROR]</p>
-  <input class='button' type='button' onclick=\"location.href='index.php';\" value='Reset' />
+  <input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
 ";
 }
 
@@ -321,7 +321,7 @@ if (bot_detected()) {
     display_headers($project_title);
     switch ($action) {
         case "encrypt":
-            $passwd = validate_input($_POST['passwd']);
+            $passwd = validate_input($_REQUEST['passwd']);
 
             $key1 = generate_key_1();
             $key2 = generate_key_2();
