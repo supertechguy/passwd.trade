@@ -16,11 +16,11 @@ Data stored in the database includes the Cipher text, encrypted with 256-bit AES
 
 ## Memory Management
 
-After creating a link, the system performs a full memory wipe and unsets all variables for good measure, ensuring data confidentiality.
+After creating a link, the system overwrites the variables with nulls and then releases the memory, ensuring data confidentiality.
 
 ## Usage Guide
 
-Instructions for encrypting and sharing passwords, accessing shared passwords, and other functionalities provided by the service are available.
+Enter the password in the text area to be encrypted, click "Generate Link".  Copy the link provided and send the link to the recipient.  When the recipient recieves and clicks on the link, the password will be displayed and the data in the database will be destroyed.  Thereby preventing others from obtaining the password using the same link.
 
 ## Security Best Practices
 
