@@ -334,7 +334,8 @@ if (bot_detected()) {
             $stmt->close();
 
             $id = $mysqli->insert_id;
-            $link = "$project_url/index.php?action=decrypt&id=$id&code=$code&key1=$key1&key2=$key2";
+            //$link = "$project_url/index.php?action=decrypt&id=$id&code=$code&key1=$key1&key2=$key2";
+            $link = "$project_url/d/$id/$code/$key1/$key2/";
             display_link($link);
 
             clear_memory($passwd, $key1, $key2, $code, $encrypted_passwd);
