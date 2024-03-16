@@ -1,39 +1,42 @@
-# passwd.trade
+#Welcome to passwd.trade
 
-passwd.trade is a self-destructing secure password transfer service.
+Welcome to passwd.trade, a secure password transfer service designed to self-destruct after a single use.
 
-## Technologies Used
+#What Technologies Do We Use?
 
-The project runs on Apache, PHP, and MySQL.
+We use Apache, PHP, and MySQL to power this project.
 
-## Database Management
+#How Do We Manage the Database?
 
-passwd.trade utilizes a MySQL database to store encrypted passwords. It employs the MyISAM storage engine and avoids transaction logs to ensure data is deleted after a one-time view.
+Our system relies on a MySQL database. We use the MyISAM storage engine and avoid transaction logs to ensure that data is deleted after it's been viewed once.
 
-## Encryption Algorithm
+#How Do We Keep Your Data Safe?
 
-Data stored in the database includes the Cipher text, encrypted with 256-bit AES in CBC mode using HMAC-SHA3-512 encryption. Encryption keys are not stored in the database or anywhere on the server, enhancing security.
+We encrypt your passwords using 256-bit AES in CBC mode with HMAC-SHA3-512 encryption. We never store encryption keys in the database or on the server, which adds an extra layer of security.
 
-## Memory Management
+#How Do We Handle Memory?
 
-After creating a link, the system overwrites the variables with nulls and then releases the memory, ensuring data confidentiality.
+Once a link is generated, we overwrite the variables with nulls and release the memory to keep your data confidential.
 
-## Usage Guide
+#How Do You Use It?
 
-Enter the password in the text area to be encrypted, click "Generate Link".  Copy the link provided and send the link to the recipient.  When the recipient recieves and clicks on the link, the password will be displayed and the data in the database will be destroyed.  Thereby preventing others from obtaining the password using the same link.
+1. Enter your password in the text area.
+2. Click "Generate Link".
+3. Copy the link provided and send it to your recipient.
+4. When your recipient clicks on the link, they'll see the password, and the data in our database will be destroyed, preventing anyone else from accessing it.
 
-## Security Best Practices
+#How Can You Keep Your Data Secure?
 
-Users are advised on creating strong passwords, securely sharing links, and handling sensitive information to maximize security.
+We encourage users to create strong passwords, share links securely, and handle sensitive information with care to maximize security.
 
-## Contributing Guidelines
+#How Can You Contribute?
 
-If you would like to contribute, reach out to @supertechguy
+If you'd like to contribute to this project, please reach out to @supertechguy.
 
-## License Information
+#What Are the Licensing Terms?
 
-The project is distributed under a GNU General Public license version 2, including terms and conditions for usage, modification, and distribution.
+This project is distributed under the GNU General Public License version 2, which outlines terms and conditions for usage, modification, and distribution.
 
-## Contact Information
+#Need Help?
 
-For questions about the project, users can reach out to @supertechguy
+If you have any questions about the project, feel free to contact @supertechguy.
