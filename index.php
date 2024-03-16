@@ -1,5 +1,7 @@
 <?php
 
+if(file_exists('opt/capcha.php'))
+    include 'opt/capcha.php';
 require_once("config/config.php");
 
 ////////////////////
