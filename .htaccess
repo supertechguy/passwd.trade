@@ -1,0 +1,7 @@
+RewriteEngine on
+RewriteCond %{QUERY_STRING} ^([^/]+)$
+RewriteRule "^d/([^/]+)/([^/]+)/([^/]+)/([^/]+)$" "index.php?action=decrypt&id=$1&code=$2&key1=$3&key2=$4"
+RewriteRule "^e/([^/]+)$" "index.php?action=encrypt&passwd=$1"
+RewriteRule "^index.html$" "index.php" [NC]
+RewriteRule "^i$" "index.php" [NC]
+
