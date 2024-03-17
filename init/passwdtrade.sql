@@ -27,6 +27,8 @@ CREATE TABLE `passwds` (
   `code` varchar(100) NOT NULL,
   `passwd` blob NOT NULL,
   `host` varchar(100) DEFAULT NULL,
+  `ts` int NOT NULL,
+  `expires` int NOT NULL DEFAULT '604800',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM AUTO_INCREMENT=131 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -40,4 +42,4 @@ CREATE TABLE `passwds` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2024-03-16 20:46:27
+-- Dump completed on 2024-03-16 21:02:39
