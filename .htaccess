@@ -1,7 +1,10 @@
-RewriteEngine on
-RewriteCond %{QUERY_STRING} ^([^/]+)$
-RewriteRule "^d/([^/]+)/([^/]+)/([^/]+)/([^/]+)$" "index.php?action=decrypt&id=$1&code=$2&key1=$3&key2=$4"
-RewriteRule "^e/([^/]+)$" "index.php?action=encrypt&passwd=$1"
-RewriteRule "^index.html$" "index.php" [NC]
-RewriteRule "^i$" "index.php" [NC]
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
 
+    # Rewrite rule for /d/{id}/{code}/{key1}/{key2} to index.php
+    RewriteRule ^d/(\d+)/([^/]+)/([^/]+)/([^/]+)/?$ index.php?action=decrypt&id=$1&code=$2&key1=$3&key2=$4 [L,QSA]
+
+    # Rewrite rule for /e/{code} to index.php
+    RewriteRule ^e/([^/]+)/?$ index.php?action=encrypt&passwd=$1 [L,QSA]
+</IfModule>
