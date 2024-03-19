@@ -205,7 +205,7 @@ border-radius: 8px;
 <body>
 <center>
 <br>
-<img src='$project_url/supertechguy-avatar-redeagle.svg' width='100px'>
+<img src='/supertechguy-avatar-redeagle.svg' width='100px'>
 <br>
 ";
 }
@@ -251,7 +251,7 @@ function outpasswd() {
 function display_form() {
     echo "<br>
 <h1>Enter password to encrypt and send</h1>
-<form method='POST' action='index.php?action=encrypt'>
+<form method='POST' action='/index.php?action=encrypt'>
   <textarea id='passwd' name='passwd' rows='5' cols='60' autofocus></textarea><br><br>
   <input class='button' type='submit' value='Generate Link'>
 </form>
@@ -268,7 +268,7 @@ function display_link($link) {
   Copy Link
   </button>
 </div>
-<input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
+<input class='button' type='button' onclick=\"location.href='/index.php';\" value='Reset' />
 
 ";
 }
@@ -285,7 +285,7 @@ function display_passwd($passwd) {
   Copy Password
   </button>
 </div>
-  <input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
+  <input class='button' type='button' onclick=\"location.href='/index.php';\" value='Reset' />
 
 ";
 }
@@ -293,7 +293,7 @@ function display_passwd($passwd) {
 function display_error() {
     echo "<br>
   <p style='color:red'>[ERROR]</p>
-  <input class='button' type='button' onclick=\"location.href='$project_url/index.php';\" value='Reset' />
+  <input class='button' type='button' onclick=\"location.href='/index.php';\" value='Reset' />
 ";
 }
 
@@ -321,6 +321,10 @@ if (bot_detected()) {
     display_headers($project_title);
     switch ($action) {
         case "encrypt":
+            $ts=time();
+            $expires=time()+604800;
+            $host=hash("sha256",$_SERVER['REMOTE_ADDR']);
+            
             $passwd = validate_input($_REQUEST['passwd']);
 
             $key1 = generate_key_1();
@@ -328,8 +332,8 @@ if (bot_detected()) {
             $code = generate_code();
             $encrypted_passwd = secured_encrypt($passwd, $key1, $key2);
 
-            $stmt = $mysqli->prepare("INSERT INTO passwds (code, passwd) VALUES (?, ?)");
-            $stmt->bind_param("ss", $code, $encrypted_passwd);
+            $stmt = $mysqli->prepare("INSERT INTO passwds (code, passwd, host, ts, expires) VALUES (?, ?, ?, ?, ?)");
+                       $stmt->bind_param("sssii", $code, $encrypted_passwd, $host, $ts, $expires);
             $stmt->execute();
             $stmt->close();
 
