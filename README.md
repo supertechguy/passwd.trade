@@ -1,33 +1,53 @@
 # passwd.trade
 
-passwd.trade is a secure password transfer service designed to self-destruct after a single use.
+passwd.trade is a secure one-time text transfer service designed to self-destruct after a single use.
 
 ## What Technologies Do We Use?
 
-We use Apache, PHP, and MySQL to power this project.
-
-## How Do We Manage the Database?
-
-Our system relies on a MySQL database. We use the MyISAM storage engine and avoid transaction logs to ensure that data is deleted after it's been viewed once.
+We use Apache, PHP, MySQL, and the browser Web Crypto API to power this project.
 
 ## How Do We Keep Your Data Safe?
 
-We encrypt your passwords using 256-bit AES in CBC mode with HMAC-SHA3-512 encryption. We never store encryption keys in the database or on the server, which adds an extra layer of security.
+The app uses two encryption layers:
 
-## How Do We Handle Memory?
+1. The sender's browser encrypts the text locally using AES-256-GCM through the Web Crypto API.
+2. The server then encrypts that already-encrypted payload again using AES-256-CBC with HMAC-SHA3-512.
 
-Once a link is generated, we overwrite the variables with nulls and release the memory to keep your data confidential.
+The shared browser password is never sent to the server. It must be delivered to the recipient separately.
+
+## Security Hardening Included
+
+This version adds a number of practical security improvements without changing the basic design:
+
+- CSRF protection on the create form
+- Security headers including HSTS, CSP, no-referrer, nosniff, and clickjacking protection
+- Rate limiting for create and retrieve requests
+- Short-lived expiration options of 15 minutes, 1 hour, or 24 hours
+- Automatic cleanup of expired records
+- Client-side shared-password checks with a minimum length and a small common-password blocklist
+- Input size limits for the secret and encrypted payload
+- Reduced sensitive logging behavior so plaintext and encrypted payloads are not written to server logs
 
 ## How Do You Use It?
 
-1. Enter your password in the text area.
-2. Click "Generate Link".
-3. Copy the link provided and send it to your recipient.
-4. When your recipient clicks on the link, they'll see the password, and the data in our database will be destroyed, preventing anyone else from accessing it.
+1. Enter the text you want to send.
+2. Enter a shared password using normal keyboard characters.
+3. Choose an expiration time.
+4. Click **Generate Link**.
+5. Send the link to your recipient.
+6. Share the password with the recipient through a different channel.
+7. The recipient opens the link, enters the shared password, and clicks **Decrypt**.
 
-## How Can You Keep Your Data Secure?
+## Security Notes
 
-We encourage users to create strong passwords, share links securely, and handle sensitive information with care to maximize security.
+- The server never receives the shared password.
+- The one-time link still carries the server-side decryption keys for the outer encryption layer.
+- Anyone with the link can retrieve the browser-encrypted payload once, but they still need the out-of-band shared password to read the text.
+- After retrieval, the stored server copy is destroyed.
+
+## Important Tradeoff
+
+The project intentionally keeps the server from holding everything needed to remove the outer encryption by itself. That means the link remains sensitive and should be handled carefully.
 
 ## How Can You Contribute?
 
@@ -35,8 +55,5 @@ If you'd like to contribute to this project, please reach out to @supertechguy.
 
 ## What Are the Licensing Terms?
 
-This project is distributed under the GNU General Public License version 2, which outlines terms and conditions for usage, modification, and distribution.
+This project is distributed under the GNU General Public License version 2.
 
-## Need Help?
-
-If you have any questions about the project, feel free to contact @supertechguy.
