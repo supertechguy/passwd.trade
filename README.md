@@ -30,8 +30,8 @@ This version adds a number of practical security improvements without changing t
 
 ## How Do You Use It?
 
-1. Enter the text you want to send.
-2. Enter a shared password using normal keyboard characters.
+1. Enter the password you want to send.
+2. Enter a shared secret using normal keyboard characters.
 3. Choose an expiration time.
 4. Click **Generate Link**.
 5. Send the link to your recipient.
@@ -40,7 +40,7 @@ This version adds a number of practical security improvements without changing t
 
 ## Security Notes
 
-- The server never receives the shared password.
+- The server never receives the shared secret.
 - The one-time link still carries the server-side decryption keys for the outer encryption layer.
 - Anyone with the link can retrieve the browser-encrypted payload once, but they still need the out-of-band shared password to read the text.
 - After retrieval, the stored server copy is destroyed.
