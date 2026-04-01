@@ -13,7 +13,7 @@ The app uses two encryption layers:
 1. The sender's browser encrypts the text locally using AES-256-GCM through the Web Crypto API.
 2. The server then encrypts that already-encrypted payload again using AES-256-CBC with HMAC-SHA3-512.
 
-The shared browser password is never sent to the server. It must be delivered to the recipient separately.
+The shared browser secret is never sent to the server. It must be delivered to the recipient separately.
 
 ## Security Hardening Included
 
@@ -35,8 +35,8 @@ This version adds a number of practical security improvements without changing t
 3. Choose an expiration time.
 4. Click **Generate Link**.
 5. Send the link to your recipient.
-6. Share the password with the recipient through a different channel.
-7. The recipient opens the link, enters the shared password, and clicks **Decrypt**.
+6. Share the secret with the recipient through a different channel.
+7. The recipient opens the link, enters the shared secret, and clicks **Decrypt**.
 
 ## Security Notes
 
