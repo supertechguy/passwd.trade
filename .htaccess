@@ -2,9 +2,6 @@
     RewriteEngine On
     RewriteBase /
 
-    # Rewrite rule for /d/{id}/{code}/{key1}/{key2} to index.php
-    RewriteRule ^d/(\d+)/([^/]+)/([^/]+)/([^/]+)/?$ index.php?action=decrypt&id=$1&code=$2&key1=$3&key2=$4 [L,QSA]
-
-    # Rewrite rule for /e/{code} to index.php
-    RewriteRule ^e/([^/]+)/?$ index.php?action=encrypt&passwd=$1 [L,QSA]
+    # Rewrite rule for /d/{code}/{key1}/{key2} to index.php
+    RewriteRule ^d/([^/]+)/([^/]+)/([^/]+)/?$ index.php?action=decrypt&code=$1&key1=$2&key2=$3 [L,QSA]
 </IfModule>

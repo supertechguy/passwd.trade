@@ -53,7 +53,7 @@ function set_security_headers()
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: no-referrer');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
@@ -63,11 +63,13 @@ function prune_expired_records($mysqli)
 {
     if ($mysqli instanceof mysqli && !$mysqli->connect_errno) {
         $now = time();
-        $stmt = $mysqli->prepare('DELETE FROM passwds WHERE expires <= ?');
-        if ($stmt) {
-            $stmt->bind_param('i', $now);
-            $stmt->execute();
-            $stmt->close();
+        foreach (['DELETE FROM passwds WHERE expires <= ?', 'DELETE FROM rate_limits WHERE reset_at <= ?'] as $sql) {
+            $stmt = $mysqli->prepare($sql);
+            if ($stmt) {
+                $stmt->bind_param('i', $now);
+                $stmt->execute();
+                $stmt->close();
+            }
         }
     }
 }
@@ -82,64 +84,37 @@ function client_fingerprint()
     return hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . '|' . ($_SERVER['HTTP_USER_AGENT'] ?? 'unknown'));
 }
 
-function rate_limit_store_path()
+function enforce_rate_limit($mysqli, $bucket, $maxAttempts, $windowSeconds)
 {
-    return sys_get_temp_dir() . '/passwd_trade_rate_limits.json';
-}
-
-function load_rate_limit_store()
-{
-    $path = rate_limit_store_path();
-    if (!file_exists($path)) {
-        return [];
-    }
-
-    $raw = @file_get_contents($path);
-    if ($raw === false || $raw === '') {
-        return [];
-    }
-
-    $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
-}
-
-function save_rate_limit_store($store)
-{
-    $path = rate_limit_store_path();
-    $dir = dirname($path);
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0700, true);
-    }
-    @file_put_contents($path, json_encode($store), LOCK_EX);
-}
-
-function enforce_rate_limit($bucket, $maxAttempts, $windowSeconds)
-{
-    $store = load_rate_limit_store();
-    $now = time();
-
-    foreach ($store as $key => $entry) {
-        if (!isset($entry['reset']) || $entry['reset'] <= $now) {
-            unset($store[$key]);
-        }
-    }
-
     $clientKey = client_fingerprint() . '|' . $bucket;
-    if (!isset($store[$clientKey]) || $store[$clientKey]['reset'] <= $now) {
-        $store[$clientKey] = [
-            'count' => 0,
-            'reset' => $now + $windowSeconds,
-        ];
-    }
+    $now = time();
+    $resetAt = $now + $windowSeconds;
 
-    if ($store[$clientKey]['count'] >= $maxAttempts) {
-        save_rate_limit_store($store);
+    $mysqli->begin_transaction();
+
+    $stmt = $mysqli->prepare('DELETE FROM rate_limits WHERE bucket=? AND reset_at<=?');
+    $stmt->bind_param('si', $clientKey, $now);
+    $stmt->execute();
+    $stmt->close();
+
+    $stmt = $mysqli->prepare('INSERT INTO rate_limits (bucket, count, reset_at) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count=count+1');
+    $stmt->bind_param('si', $clientKey, $resetAt);
+    $stmt->execute();
+    $stmt->close();
+
+    $stmt = $mysqli->prepare('SELECT count FROM rate_limits WHERE bucket=?');
+    $stmt->bind_param('s', $clientKey);
+    $stmt->execute();
+    $stmt->bind_result($count);
+    $stmt->fetch();
+    $stmt->close();
+
+    $mysqli->commit();
+
+    if ($count > $maxAttempts) {
         http_response_code(429);
         exit('Too many requests. Please wait and try again.');
     }
-
-    $store[$clientKey]['count']++;
-    save_rate_limit_store($store);
 }
 
 function validate_ascii_keyboard_text($input, $fieldName, $maxLength, $allowNewlines = true)
@@ -164,20 +139,6 @@ function validate_ascii_keyboard_text($input, $fieldName, $maxLength, $allowNewl
     }
 
     return $input;
-}
-
-function validate_numeric_id($input)
-{
-    if (!is_string($input) && !is_int($input)) {
-        exit('Invalid input.');
-    }
-
-    $value = (string)$input;
-    if (!preg_match('/^\d+$/', $value)) {
-        exit('Invalid input.');
-    }
-
-    return (int)$value;
 }
 
 function clear_memory(...$vars)
@@ -258,9 +219,9 @@ function secured_encrypt($data, $key1, $key2)
     $iv = random_bytes($iv_length);
 
     $first_encrypted = openssl_encrypt($data, $method, $first_key, OPENSSL_RAW_DATA, $iv);
-    $second_encrypted = hash_hmac('sha3-512', $first_encrypted, $second_key, true);
+    $mac = hash_hmac('sha3-512', $iv . $first_encrypted, $second_key, true);
 
-    return base64url_encode($iv . $second_encrypted . $first_encrypted);
+    return base64url_encode($iv . $mac . $first_encrypted);
 }
 
 function secured_decrypt($input, $key1, $key2)
@@ -273,17 +234,17 @@ function secured_decrypt($input, $key1, $key2)
     $iv_length = openssl_cipher_iv_length($method);
 
     $iv = substr($mix, 0, $iv_length);
-    $second_encrypted = substr($mix, $iv_length, 64);
+    $mac = substr($mix, $iv_length, 64);
     $first_encrypted = substr($mix, $iv_length + 64);
 
-    $data = openssl_decrypt($first_encrypted, $method, $first_key, OPENSSL_RAW_DATA, $iv);
-    $second_encrypted_new = hash_hmac('sha3-512', $first_encrypted, $second_key, true);
+    $mac_new = hash_hmac('sha3-512', $iv . $first_encrypted, $second_key, true);
 
-    if ($data !== false && hash_equals($second_encrypted, $second_encrypted_new)) {
-        return $data;
+    if (!hash_equals($mac, $mac_new)) {
+        return false;
     }
 
-    return false;
+    $data = openssl_decrypt($first_encrypted, $method, $first_key, OPENSSL_RAW_DATA, $iv);
+    return $data !== false ? $data : false;
 }
 
 function html_escape($value)
@@ -294,119 +255,16 @@ function html_escape($value)
 function display_headers($project_title)
 {
     $safe_title = html_escape($project_title);
+    $iterations = PBKDF2_ITERATIONS;
+    $minPassword = MIN_SHARED_SECRET_LENGTH;
+    $passwordAttemptLimit = PASSWORD_ATTEMPT_LIMIT_MAX;
     echo <<<HTML
 <html>
 <head>
 <title>{$safe_title}</title>
-<style>
-body {
-color: white;
-background-color: black;
-font-family: system-ui;
-}
-.tooltip {
-  position: relative;
-  display: inline-block;
-}
-
-.tooltip .tooltiptext {
-  visibility: hidden;
-  width: 140px;
-  background-color: #555;
-  color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 5px;
-  position: absolute;
-  z-index: 1;
-  bottom: 150%;
-  left: 50%;
-  margin-left: -75px;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.tooltip .tooltiptext::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-left: -5px;
-  border-width: 5px;
-  border-style: solid;
-  border-color: #555 transparent transparent transparent;
-}
-
-.tooltip:hover .tooltiptext {
-  visibility: visible;
-  opacity: 1;
-}
-
-textarea,textarea:focus,input[type="password"],input[type="password"]:focus,select
-{
- font-size: 14px;
- width: 30%;
- padding: 12px 20px;
- box-sizing: border-box;
- border: 4px solid #47110d;
- border-radius: 4px;
- background-color: #f8f8f8;
- outline: none !important;
- box-shadow: 0 0 10px #642e2a;
-}
-
-textarea {
- overflow: hidden;
- resize: vertical;
- color: #111;
-}
-
-input[type="password"], select {
- color: #111;
-}
-
-.button {
-  background-color: #ef3d30;
-  border: none;
-  color: white;
-  padding: 10px 20px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
-.button:hover
-{
-  background-color: #47110d;
-  border: none;
-  color: white;
-  padding: 10px 20px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
-.helptext {
-  color: #d0d0d0;
-  width: 40%;
-  line-height: 1.4;
-}
-
-.hidden {
-  display: none;
-}
-
-.status {
-  color: #d0d0d0;
-  min-height: 22px;
-}
-</style>
+<link rel="stylesheet" href="/app.css">
 </head>
-<body>
+<body data-pbkdf2-iterations="{$iterations}" data-min-secret-length="{$minPassword}" data-attempt-limit="{$passwordAttemptLimit}">
 <center>
 <br>
 <img src='/supertechguy-avatar-redeagle.svg' width='100px'>
@@ -416,236 +274,8 @@ HTML;
 
 function display_footers()
 {
-    $iterations = PBKDF2_ITERATIONS;
-    $minPassword = MIN_SHARED_SECRET_LENGTH;
-    $passwordAttemptLimit = PASSWORD_ATTEMPT_LIMIT_MAX;
     echo <<<HTML
-<script>
-const PBKDF2_ITERATIONS = {$iterations};
-const MIN_SHARED_SECRET_LENGTH = {$minPassword};
-const PASSWORD_ATTEMPT_LIMIT_MAX = {$passwordAttemptLimit};
-const ASCII_PRINTABLE_PATTERN = /^[ -~]+$/;
-const COMMON_PASSWORDS = new Set([
-  '12345678','123456789','1234567890','password','password1','password123','qwerty','qwerty123','letmein','welcome','admin','abc123','iloveyou','changeme','secret','passw0rd','11111111','123123123','zaq12wsx','dragon'
-]);
-
-function copyFromElement(id, tooltipId, copiedText, defaultText) {
-  var copyText = document.getElementById(id);
-  if (!copyText) {
-    return;
-  }
-  copyText.select();
-  copyText.setSelectionRange(0, 99999);
-  navigator.clipboard.writeText(copyText.value);
-
-  var tooltip = document.getElementById(tooltipId);
-  if (tooltip) {
-    tooltip.innerHTML = copiedText;
-    tooltip.dataset.defaultText = defaultText;
-  }
-}
-
-function resetTooltip(tooltipId) {
-  var tooltip = document.getElementById(tooltipId);
-  if (tooltip && tooltip.dataset.defaultText) {
-    tooltip.innerHTML = tooltip.dataset.defaultText;
-  }
-}
-
-function bytesToBase64Url(bytes) {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function base64UrlToBytes(base64url) {
-  const normalized = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function deriveAesKey(password, saltBytes, iterations) {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-
-  return crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: saltBytes,
-      iterations: iterations,
-      hash: 'SHA-256'
-    },
-    keyMaterial,
-    {
-      name: 'AES-GCM',
-      length: 256
-    },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
-function validateSharedPasswordClient(password) {
-  if (!password.length) {
-    return 'Shared password is required.';
-  }
-  if (password.length < MIN_SHARED_SECRET_LENGTH) {
-    return 'Shared password must be at least ' + MIN_SHARED_SECRET_LENGTH + ' characters long.';
-  }
-  if (!ASCII_PRINTABLE_PATTERN.test(password)) {
-    return 'Shared password must use normal keyboard characters only.';
-  }
-  if (COMMON_PASSWORDS.has(password.toLowerCase())) {
-    return 'Choose a less common shared password.';
-  }
-  return '';
-}
-
-async function encryptClientSide(plaintext, password) {
-  const encoder = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveAesKey(password, salt, PBKDF2_ITERATIONS);
-  const encrypted = await crypto.subtle.encrypt(
-    {
-      name: 'AES-GCM',
-      iv: iv
-    },
-    key,
-    encoder.encode(plaintext)
-  );
-
-  return JSON.stringify({
-    v: 1,
-    alg: 'AES-GCM',
-    kdf: 'PBKDF2-SHA-256',
-    iter: PBKDF2_ITERATIONS,
-    salt: bytesToBase64Url(salt),
-    iv: bytesToBase64Url(iv),
-    ct: bytesToBase64Url(new Uint8Array(encrypted))
-  });
-}
-
-async function decryptClientSide(payload, password) {
-  const parsed = JSON.parse(payload);
-  if (parsed.v !== 1 || parsed.alg !== 'AES-GCM' || parsed.kdf !== 'PBKDF2-SHA-256') {
-    throw new Error('Unsupported encrypted payload format.');
-  }
-
-  const salt = base64UrlToBytes(parsed.salt);
-  const iv = base64UrlToBytes(parsed.iv);
-  const ciphertext = base64UrlToBytes(parsed.ct);
-  const key = await deriveAesKey(password, salt, parsed.iter);
-  const decrypted = await crypto.subtle.decrypt(
-    {
-      name: 'AES-GCM',
-      iv: iv
-    },
-    key,
-    ciphertext
-  );
-
-  return new TextDecoder().decode(decrypted);
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-  let decryptAttempts = 0;
-  const encryptForm = document.getElementById('encrypt-form');
-  if (encryptForm) {
-    encryptForm.addEventListener('submit', async function (event) {
-      event.preventDefault();
-
-      const plaintextField = document.getElementById('plaintext');
-      const sharedPasswordField = document.getElementById('SHARED_SECRET');
-      const encryptedPayloadField = document.getElementById('encrypted_payload');
-      const statusField = document.getElementById('encrypt-status');
-
-      const plaintext = plaintextField.value;
-      const sharedPassword = sharedPasswordField.value;
-      const passwordError = validateSharedPasswordClient(sharedPassword);
-
-      if (!plaintext.length) {
-        statusField.textContent = 'Text is required.';
-        return;
-      }
-
-      if (passwordError) {
-        statusField.textContent = passwordError;
-        return;
-      }
-
-      try {
-        statusField.textContent = 'Encrypting locally in your browser...';
-        const payload = await encryptClientSide(plaintext, sharedPassword);
-        encryptedPayloadField.value = payload;
-        plaintextField.value = '';
-        sharedPasswordField.value = '';
-        statusField.textContent = 'Submitting encrypted payload...';
-        plaintextField.removeAttribute('name');
-        sharedPasswordField.removeAttribute('name');
-        encryptForm.submit();
-      } catch (error) {
-        statusField.textContent = 'Client-side encryption failed.';
-      }
-    });
-  }
-
-  const decryptButton = document.getElementById('decrypt-button');
-  if (decryptButton) {
-    decryptButton.addEventListener('click', async function () {
-      const payloadField = document.getElementById('client_encrypted_payload');
-      const sharedPasswordField = document.getElementById('decrypt_SHARED_SECRET');
-      const outputField = document.getElementById('decrypted_text');
-      const outputSection = document.getElementById('decrypted_text_section');
-      const statusField = document.getElementById('decrypt-status');
-
-      if (!payloadField || !sharedPasswordField || !outputField || !outputSection || !statusField) {
-        return;
-      }
-
-      const passwordError = validateSharedPasswordClient(sharedPasswordField.value);
-      if (passwordError) {
-        statusField.textContent = passwordError;
-        return;
-      }
-
-      if (decryptAttempts >= PASSWORD_ATTEMPT_LIMIT_MAX) {
-        statusField.textContent = 'Too many decrypt attempts on this page. Reload the page to try again.';
-        decryptButton.disabled = true;
-        return;
-      }
-
-      try {
-        decryptAttempts++;
-        statusField.textContent = 'Decrypting locally in your browser...';
-        const decrypted = await decryptClientSide(payloadField.value, sharedPasswordField.value);
-        outputField.value = decrypted;
-        outputSection.classList.remove('hidden');
-        statusField.textContent = 'Decryption complete.';
-        sharedPasswordField.value = '';
-      } catch (error) {
-        statusField.textContent = 'Unable to decrypt. Check the shared password.';
-        outputField.value = '';
-        outputSection.classList.add('hidden');
-      }
-    });
-  }
-});
-</script>
+<script src="/app.js"></script>
 </body>
 </html>
 HTML;
@@ -681,14 +311,14 @@ function display_link($link)
 <br>
 <h1>Send this link to the recipient</h1>
 <p class="helptext">The recipient will also need the shared secret you gave them separately.</p>
-<textarea id='link' name='link' rows='5' cols='60' autofocus>{$safe_link}</textarea></p>
+<textarea id='link' name='link' rows='5' cols='60' autofocus>{$safe_link}</textarea>
 <div class='tooltip'>
-<button class='button' onclick="copyFromElement('link','linkTooltip','Copied link to clipboard','Copy to clipboard')" onmouseout="resetTooltip('linkTooltip')">
+<button class='button' id='copy-link-btn'>
   <span class='tooltiptext' id='linkTooltip' data-default-text='Copy to clipboard'>Copy to clipboard</span>
   Copy Link
 </button>
 </div>
-<input class='button' type='button' onclick="location.href='/index.php';" value='Reset' />
+<input class='button reset-btn' type='button' value='Reset' />
 HTML;
 }
 
@@ -707,14 +337,14 @@ function display_decrypt_form($client_encrypted_payload)
   <h1>Your text is:</h1>
   <textarea id='decrypted_text' name='decrypted_text' rows='5' cols='60' autofocus readonly></textarea><br><br>
   <p>This page will only be accessible once. You must copy the text now.</p>
-  <p style='color:red'>[Data Destroyed]</p>
+  <p class='text-red'>[Data Destroyed]</p>
   <div class='tooltip'>
-    <button class='button' onclick="copyFromElement('decrypted_text','secretTooltip','Copied text to clipboard','Copy to clipboard')" onmouseout="resetTooltip('secretTooltip')">
+    <button class='button' id='copy-text-btn'>
       <span class='tooltiptext' id='secretTooltip' data-default-text='Copy to clipboard'>Copy to clipboard</span>
       Copy Text
     </button>
   </div>
-  <input class='button' type='button' onclick="location.href='/index.php';" value='Reset' />
+  <input class='button reset-btn' type='button' value='Reset' />
 </div>
 HTML;
 }
@@ -724,8 +354,8 @@ function display_error($message = '[ERROR]')
     $safeMessage = html_escape($message);
     echo <<<HTML
 <br>
-  <p style='color:red'>{$safeMessage}</p>
-  <input class='button' type='button' onclick="location.href='/index.php';" value='Reset' />
+  <p class='text-red'>{$safeMessage}</p>
+  <input class='button reset-btn' type='button' value='Reset' />
 HTML;
 }
 
@@ -754,7 +384,7 @@ if (bot_detected()) {
     display_headers($project_title);
     switch ($action) {
         case 'encrypt':
-            enforce_rate_limit('create', CREATE_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS);
+            enforce_rate_limit($mysqli, 'create', CREATE_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS);
             require_valid_csrf_token();
 
             $ttl = (int)($_POST['ttl'] ?? DEFAULT_TTL_SECONDS);
@@ -803,30 +433,36 @@ if (bot_detected()) {
             $stmt->execute();
             $stmt->close();
 
-            $id = $mysqli->insert_id;
-            $link = "$project_url/d/$id/$code/$key1/$key2/";
+            $link = "$project_url/d/$code/$key1/$key2/";
             display_link($link);
 
             clear_memory($encrypted_payload, $key1, $key2, $code, $encrypted_passwd);
             break;
 
         case 'decrypt':
-            enforce_rate_limit('retrieve', DECRYPT_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS);
+            enforce_rate_limit($mysqli, 'retrieve', DECRYPT_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS);
 
             $key1 = validate_ascii_keyboard_text($_GET['key1'] ?? '', 'key1', 128, false);
             $key2 = validate_ascii_keyboard_text($_GET['key2'] ?? '', 'key2', 128, false);
-            $id = validate_numeric_id($_GET['id'] ?? '');
             $code = validate_ascii_keyboard_text($_GET['code'] ?? '', 'code', 128, false);
 
             $now = time();
-            $stmt = $mysqli->prepare('SELECT passwd FROM passwds WHERE id=? AND code=? AND expires>?');
-            $stmt->bind_param('isi', $id, $code, $now);
+            $mysqli->begin_transaction();
+
+            $stmt = $mysqli->prepare('SELECT passwd FROM passwds WHERE code=? AND expires>? FOR UPDATE');
+            $stmt->bind_param('si', $code, $now);
             $stmt->execute();
             $stmt->bind_result($encrypted_passwd);
             $stmt->fetch();
             $stmt->close();
 
             if ($encrypted_passwd) {
+                $stmt = $mysqli->prepare('DELETE FROM passwds WHERE code=?');
+                $stmt->bind_param('s', $code);
+                $stmt->execute();
+                $stmt->close();
+                $mysqli->commit();
+
                 $client_encrypted_payload = secured_decrypt($encrypted_passwd, $key1, $key2);
                 if ($client_encrypted_payload !== false) {
                     display_decrypt_form($client_encrypted_payload);
@@ -834,13 +470,9 @@ if (bot_detected()) {
                     display_error();
                 }
             } else {
+                $mysqli->rollback();
                 display_error('This link is invalid, expired, or already used.');
             }
-
-            $stmt = $mysqli->prepare('DELETE FROM passwds WHERE id=? AND code=?');
-            $stmt->bind_param('is', $id, $code);
-            $stmt->execute();
-            $stmt->close();
 
             clear_memory($key1, $key2, $code, $encrypted_passwd, $client_encrypted_payload ?? null);
             break;
